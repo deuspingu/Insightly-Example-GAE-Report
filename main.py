@@ -66,6 +66,7 @@ class RequestInformationHandler(webapp2.RequestHandler):
     def post(self):
         i = Insightly(apikey = apikey)
         contactinfos = list()
+
         if len(self.request.get('EMAIL')) > 0:
             contactinfo = dict(
                 TYPE = 'EMAIL',
@@ -142,9 +143,45 @@ class PageHandler(webapp2.RequestHandler):
     def get(self, page=''):
         self.response.out.write(load_page(page))
 
+class OrganizationsHandler(webapp2.RequestHandler):
+    """
+    This handler displays all of the Organizations in an Insightly account
+    """
+    def get(self):
+        i = Insightly(apikey = apikey)
+
+        customFieldsList = i.getCustomFields()
+        for cf in customFieldsList:
+            if(str(cf.get('FIELD_NAME','')) == 'Classification'):
+                classification_id = str(cf.get('CUSTOM_FIELD_ID'))
+
+        organizationList = i.getOrganizations()
+        self.response.out.write('<ul>')
+        for o in organizationList:
+            self.response.out.write('<li>' + str(o.get('ORGANISATION_NAME', '')) + ' - ')
+            for cf in o.get('CUSTOMFIELDS'):
+                if cf.get('CUSTOM_FIELD_ID') == classification_id:
+                    self.response.out.write(str(cf.get('FIELD_VALUE')))
+            self.response.out.write('</li>')
+        self.response.out.write('</ul>')
+
+class CustomFieldHandler(webapp2.RequestHandler):
+    """
+    This handler lists the results of the dicts returned by the getCustomField api call
+    """
+    def get(self):
+        i = Insightly(apikey = apikey)
+
+        customFieldsList = i.getCustomFields()
+        for cf in customFieldsList:
+            if(str(cf.get('FIELD_NAME','')) == 'Classification'):
+                classification_id = str(cf.get('CUSTOM_FIELD_ID'))
+
 app = webapp2.WSGIApplication([
     ('/', RequestInformationHandler),
     ('/projects', ProjectsHandler),
+    ('/organizations', OrganizationsHandler),
+    ('/cf', CustomFieldHandler),
     ('/requestinformation', RequestInformationHandler),
     ('/tasks', TasksHandler),
     (r'/(.*)', PageHandler)
