@@ -25,6 +25,13 @@
 import os
 import string
 import webapp2
+import jinja2
+
+JINJA_ENVIRONMENT = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(os.path.dirname(__file__)),
+    extensions=['jinja2.ext.autoescape'],
+    autoescape=True)
+
 import wsgiref.handlers
 
 # import the required App Engine libraries, if you are hosting in a non-appengine environment
@@ -35,6 +42,10 @@ from google.appengine.ext.webapp import util
 
 # import the Insightly SDK
 from insightly import Insightly
+
+import logging
+from collections import defaultdict
+from collections import OrderedDict
 
 # your Insightly API key goes here
 apikey = 'f01c8f69-bea1-4531-9f10-b38cc8a19bfc'
@@ -48,10 +59,13 @@ def load_page(page, data = None):
     path = os.path.join(os.path.dirname(__file__), "main.html")
     if data is not None:
         if type(data) is dict:
+            logging.info("Rendering path:" + path + " with data typed dict")
             return template.render(path, data)
     data = dict(
         page = page + '.html',
     )
+
+    logging.info("Rendering path:" + path + " with empty data collection")
     return template.render(path, data)
         
 class RequestInformationHandler(webapp2.RequestHandler):
@@ -165,6 +179,68 @@ class OrganizationsHandler(webapp2.RequestHandler):
             self.response.out.write('</li>')
         self.response.out.write('</ul>')
 
+class ReportHandler(webapp2.RequestHandler):
+    """
+    This handler displays all of the Organizations in an Insightly account
+    """
+    def get(self):
+        i = Insightly(apikey = apikey)
+
+        customFieldsList = i.getCustomFields()
+        for cf in customFieldsList:
+            if(str(cf.get('FIELD_NAME','')) == 'Classification'):
+                classification_field_id = str(cf.get('CUSTOM_FIELD_ID'))
+
+        organizationList = i.getOrganizations()
+        
+        # Decorate Organizations with our custom field out of it's magical collection so that we can rely on it being there
+        for o in organizationList:
+            for cf in o.get('CUSTOMFIELDS'):
+                if cf.get('CUSTOM_FIELD_ID') == classification_field_id:
+                    o['CLASSIFICATION'] = cf.get('FIELD_VALUE')
+            if not o.has_key('CLASSIFICATION'):
+                o['CLASSIFICATION'] = 'Unknown'
+
+
+        # group our organizations by their classification
+        orgs_by_class = {}
+        for o in organizationList:
+            if not orgs_by_class.has_key(o['CLASSIFICATION']):
+                orgs_by_class[o['CLASSIFICATION']] = []
+            orgs_by_class[o['CLASSIFICATION']].append(o)
+
+        #logging.info(str(orgs_by_class['5. Client']))
+
+        test = {
+            'Tier 1': [
+                {
+                    'ORGANISATION_NAME': 'Org 1'
+                },
+                {
+                    'ORGANISATION_NAME': 'Org 2'
+                }
+            ],
+            'Tier 2': [
+                {
+                    'ORGANISATION_NAME': 'Org 3'
+                },
+                {
+                    'ORGANISATION_NAME': 'Org 4'
+                }
+            ]
+        }
+        
+
+        template_values = {
+            'page' : "report.html",
+            'sorted_classification_list' : sorted(orgs_by_class, reverse=True),
+            'orgs_by_class' : orgs_by_class
+        }
+        
+        #self.response.out.write(load_page('report', template_values))
+        template = JINJA_ENVIRONMENT.get_template('report.html')
+        self.response.write(template.render(template_values))
+
 class CustomFieldHandler(webapp2.RequestHandler):
     """
     This handler lists the results of the dicts returned by the getCustomField api call
@@ -184,5 +260,6 @@ app = webapp2.WSGIApplication([
     ('/cf', CustomFieldHandler),
     ('/requestinformation', RequestInformationHandler),
     ('/tasks', TasksHandler),
+    ('/report', ReportHandler),
     (r'/(.*)', PageHandler)
 ], debug=True)

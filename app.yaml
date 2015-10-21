@@ -11,6 +11,12 @@ handlers:
   
 - url: /bootstrap
   static_dir: bootstrap
+
+- url: /ggsys
+  static_dir: ggsys
+
+- url: /ggsys/css
+  static_dir: ggsys/css
   
 - url: /bootstrap/css
   static_dir: bootstrap/css
@@ -30,3 +36,5 @@ handlers:
 libraries:
 - name: webapp2
   version: "2.5.2"
+- name: jinja2
+  version: latest
