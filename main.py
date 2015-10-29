@@ -12,7 +12,7 @@
 # * Contacts
 # * Emails
 # * Opportunities
-# * Organizations
+# * orgainsations
 # * Projects
 # * Tasks
 #
@@ -43,6 +43,8 @@ from google.appengine.ext.webapp import util
 # import the Insightly SDK
 from insightly import Insightly
 
+from ggsys import GuardianInsightlyWrapper
+
 import logging
 from collections import defaultdict
 from collections import OrderedDict
@@ -65,7 +67,7 @@ def load_page(page, data = None):
         page = page + '.html',
     )
 
-    logging.info("Rendering path:" + path + " with empty data collection")
+    # logging.info("Rendering path:" + path + " with empty data collection")
     return template.render(path, data)
         
 class RequestInformationHandler(webapp2.RequestHandler):
@@ -157,9 +159,9 @@ class PageHandler(webapp2.RequestHandler):
     def get(self, page=''):
         self.response.out.write(load_page(page))
 
-class OrganizationsHandler(webapp2.RequestHandler):
+class orgainsationsHandler(webapp2.RequestHandler):
     """
-    This handler displays all of the Organizations in an Insightly account
+    This handler displays all of the orgainsations in an Insightly account
     """
     def get(self):
         i = Insightly(apikey = apikey)
@@ -169,9 +171,9 @@ class OrganizationsHandler(webapp2.RequestHandler):
             if(str(cf.get('FIELD_NAME','')) == 'Classification'):
                 classification_id = str(cf.get('CUSTOM_FIELD_ID'))
 
-        organizationList = i.getOrganizations()
+        organisations = i.getorgainsations()
         self.response.out.write('<ul>')
-        for o in organizationList:
+        for o in organisations:
             self.response.out.write('<li>' + str(o.get('ORGANISATION_NAME', '')) + ' - ')
             for cf in o.get('CUSTOMFIELDS'):
                 if cf.get('CUSTOM_FIELD_ID') == classification_id:
@@ -181,60 +183,67 @@ class OrganizationsHandler(webapp2.RequestHandler):
 
 class ReportHandler(webapp2.RequestHandler):
     """
-    This handler displays all of the Organizations in an Insightly account
+    This handler displays all of the orgainsations in an Insightly account
     """
     def get(self):
-        i = Insightly(apikey = apikey)
+        g = GuardianInsightlyWrapper()
 
-        customFieldsList = i.getCustomFields()
+        customFieldsList = g.getCustomFields()
+        tasks = g.getTasks()
+        organisations = g.getOrganisations()
+
         for cf in customFieldsList:
             if(str(cf.get('FIELD_NAME','')) == 'Classification'):
                 classification_field_id = str(cf.get('CUSTOM_FIELD_ID'))
 
-        organizationList = i.getOrganizations()
-        
-        # Decorate Organizations with our custom field out of it's magical collection so that we can rely on it being there
-        for o in organizationList:
-            for cf in o.get('CUSTOMFIELDS'):
-                if cf.get('CUSTOM_FIELD_ID') == classification_field_id:
-                    o['CLASSIFICATION'] = cf.get('FIELD_VALUE')
-            if not o.has_key('CLASSIFICATION'):
-                o['CLASSIFICATION'] = 'Unknown'
+        # Decorate orgainsations with our custom field out of it's magical collection so that we can rely on it being there
+        for o in organisations:
+            if o['CUSTOMFIELDS'] is not None:
+                for cf in o.get('CUSTOMFIELDS'):
+                    if cf.get('CUSTOM_FIELD_ID') == classification_field_id:
+                        o['CLASSIFICATION'] = cf.get('FIELD_VALUE')
+                        # Also populate our organisation with any outstanding tasks
+                if not o.has_key('CLASSIFICATION'):
+                    o['CLASSIFICATION'] = 'Not Set'
+            else:
+                o['CLASSIFICATION'] = 'Not Set'
 
+        org_idx_by_id = g.build_dict(organisations, 'ORGANISATION_ID')
 
-        # group our organizations by their classification
+        unallocated_tasks = []
+        # Append all tasks to their organisations
+        for t in tasks:
+            if t['TASKLINKS'] is not None:
+                for tl in t['TASKLINKS']:
+                    if tl['ORGANISATION_ID'] is not None:
+                        logging.info(tl['ORGANISATION_ID'])
+                        if org_idx_by_id[tl['ORGANISATION_ID']] is not None:
+                            # ID = org_idx_by_id[tl['ORGANISATION_ID']]['index']
+                            if 'Tasks' in organisations[org_idx_by_id[tl['ORGANISATION_ID']]['index']]:
+                                organisations[org_idx_by_id[tl['ORGANISATION_ID']]['index']]['Tasks'].append(t)
+                            else:
+                                organisations[org_idx_by_id[tl['ORGANISATION_ID']]['index']]['Tasks'] = []
+                                organisations[org_idx_by_id[tl['ORGANISATION_ID']]['index']]['Tasks'].append(t)
+                        else:
+                            unallocated_tasks.append(t)
+                            logging.info('Not Found')
+            else:
+                unallocated_tasks.append(t)
+
+        # group our orgainsations by their classification
         orgs_by_class = {}
-        for o in organizationList:
+        for o in organisations:
             if not orgs_by_class.has_key(o['CLASSIFICATION']):
                 orgs_by_class[o['CLASSIFICATION']] = []
             orgs_by_class[o['CLASSIFICATION']].append(o)
-
-        #logging.info(str(orgs_by_class['5. Client']))
-
-        test = {
-            'Tier 1': [
-                {
-                    'ORGANISATION_NAME': 'Org 1'
-                },
-                {
-                    'ORGANISATION_NAME': 'Org 2'
-                }
-            ],
-            'Tier 2': [
-                {
-                    'ORGANISATION_NAME': 'Org 3'
-                },
-                {
-                    'ORGANISATION_NAME': 'Org 4'
-                }
-            ]
-        }
-        
+      
+        logging.info(unallocated_tasks)
 
         template_values = {
             'page' : "report.html",
-            'sorted_classification_list' : sorted(orgs_by_class, reverse=True),
-            'orgs_by_class' : orgs_by_class
+            'sorted_classification_list' : sorted(orgs_by_class, reverse=False),
+            'orgs_by_class' : orgs_by_class,
+            'unallocated_tasks': unallocated_tasks
         }
         
         #self.response.out.write(load_page('report', template_values))
@@ -256,7 +265,7 @@ class CustomFieldHandler(webapp2.RequestHandler):
 app = webapp2.WSGIApplication([
     ('/', RequestInformationHandler),
     ('/projects', ProjectsHandler),
-    ('/organizations', OrganizationsHandler),
+    ('/orgainsations', orgainsationsHandler),
     ('/cf', CustomFieldHandler),
     ('/requestinformation', RequestInformationHandler),
     ('/tasks', TasksHandler),
