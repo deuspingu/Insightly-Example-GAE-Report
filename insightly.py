@@ -13,7 +13,6 @@ import string
 import urllib
 import urllib2
 import zlib
-import logging
 
 class Insightly():
     """
@@ -444,7 +443,6 @@ class Insightly():
 			else:
 			    for fk in filterkeys:
 				querystring += '&' + fk + '=' + str(filters[fk])
-		logging.info('Query String:' + querystring)
 		return querystring
 	    else:
 		return ''
@@ -526,7 +524,6 @@ class Insightly():
 	    pass
 	if search:
 	    url += self.ODataQuery('',top=top, skip=skip, orderby=orderby, filters=filters)
-	    logging.info('URL for query:' + url)
 	if test:
 	    self.tests_run += 1
 	    try:
